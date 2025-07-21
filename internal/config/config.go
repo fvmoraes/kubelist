@@ -3,16 +3,14 @@ package config
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/exec"
 
-	"github.com/fvmoraes/kubelist/internal/namespace"
-
 	"github.com/eiannone/keyboard"
+	"github.com/fvmoraes/kubelist/internal/namespace"
 )
 
-const kubeListFile = "~/.kube/kubelist.json"
+const kubeListFile = "/.kube/kubelist.json"
 
 func ReadNamespacesFromJSON() ([]namespace.Namespace, error) {
 	homeDir, err := os.UserHomeDir()
@@ -20,8 +18,8 @@ func ReadNamespacesFromJSON() ([]namespace.Namespace, error) {
 		return nil, err
 	}
 
-	filePath := homeDir + "/.kube/kubelist.json"
-	data, err := ioutil.ReadFile(filePath)
+	filePath := homeDir + kubeListFile
+	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, err
 	}
@@ -35,11 +33,25 @@ func ReadNamespacesFromJSON() ([]namespace.Namespace, error) {
 }
 
 func SelectNamespace(namespaces []namespace.Namespace) string {
-	fmt.Println("Select the desired namespace using the arrow keys (↑ ↓) and press Enter to confirm:")
+	// Ativa a tela alternativa (modo temporário)
+	fmt.Print("\033[?1049h")
+	defer fmt.Print("\033[?1049l") // Sai da tela alternativa ao sair da função
 
 	selectedIndex := 0
+
+	if err := keyboard.Open(); err != nil {
+		fmt.Println("Error opening keyboard:", err)
+		return ""
+	}
+	defer func() {
+		_ = keyboard.Close()
+	}()
+
 	for {
-		clearScreen()
+		// Limpa a tela da alternativa antes de desenhar
+		fmt.Print("\033[H\033[2J")
+
+		fmt.Println("Select the desired namespace using the arrow keys (↑ ↓) and press Enter to confirm:\n")
 		listNamespacesWithHighlight(namespaces, selectedIndex)
 
 		char, key, err := keyboard.GetSingleKey()
@@ -57,6 +69,8 @@ func SelectNamespace(namespaces []namespace.Namespace) string {
 			return namespaces[selectedIndex].Name
 		case keyboard.KeyEsc:
 			return "default"
+		default:
+			return "default"
 		}
 
 		if char != 0 {
@@ -69,17 +83,11 @@ func listNamespacesWithHighlight(namespaces []namespace.Namespace, selectedIndex
 	fmt.Println("Available namespaces:")
 	for i, ns := range namespaces {
 		if i == selectedIndex {
-			fmt.Printf("-> %s\n", ns.Name)
+			fmt.Printf("\033[33m->\033[0m \033[1m%s\033[0m\n", ns.Name)
 		} else {
 			fmt.Printf("   %s\n", ns.Name)
 		}
 	}
-}
-
-func clearScreen() {
-	cmd := exec.Command("clear")
-	cmd.Stdout = os.Stdout
-	cmd.Run()
 }
 
 func SetKubectlContext(namespace string) error {
